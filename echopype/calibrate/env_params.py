@@ -55,8 +55,11 @@ def harmonize_env_param_time(
             return p.squeeze(dim="time1").drop_vars("time1")
 
         # If after dropping NaN along time1 dimension there's only 1 time1 value:
-        if p.dropna(dim="time1").size == 1:
-            return p.dropna(dim="time1").squeeze(dim="time1").drop_vars("time1")
+        try:
+            if p.dropna(dim="time1").size == 1:
+                return p.dropna(dim="time1").squeeze(dim="time1").drop_vars("time1")
+        except ValueError:
+            print(f"Failed for {p.name}")
 
         if ping_time is None:
             raise ValueError(
@@ -65,7 +68,13 @@ def harmonize_env_param_time(
 
         # Direct assignment if all timestamps are identical (EK60 data)
         if np.array_equal(p["time1"].data, ping_time.data):
-            return p.rename({"time1": "ping_time"})
+            if "ping_time" in p.coords:
+                # If ping_time already exists, update the values directly
+                p = p.assign_coords({"ping_time": p["time1"]}).drop_vars("time1")
+            else:
+                # Otherwise, rename time1 to ping_time
+                p = p.rename({"time1": "ping_time"})
+            return p
 
         # Interpolate `p` to `ping_time`
         return p.dropna(dim="time1").interp(time1=ping_time)

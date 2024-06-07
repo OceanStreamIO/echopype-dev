@@ -323,16 +323,55 @@ class CalibrateEK80(CalibrateEK):
             first_ping_transmit_type = (
                 beam["transmit_type"].isel(ping_time=0).drop_vars("ping_time")
             )  # noqa
+
+            def get_channels(data_array, condition):
+                logger.error(f"Getting channels with condition: {condition}")
+
+                # Ensure the data array is properly chunked
+                if isinstance(data_array.data, da.Array):
+                    data_array = data_array.chunk({'channel': -1})
+
+                filtered = data_array.where(condition, drop=True)
+
+                if filtered.size == 0:
+                    logger.error("Filtered DataArray is empty.")
+                    return xr.DataArray([], dims=["channel"])
+
+                if 'channel' not in filtered.coords or filtered['channel'].size == 0:
+                    logger.error("Filtered DataArray has no 'channel' coordinate or it is empty.")
+                    return xr.DataArray([], dims=["channel"])
+
+                return filtered['channel']
+
+            if isinstance(first_ping_transmit_type.data, da.Array):
+                first_ping_transmit_type = first_ping_transmit_type.compute()
+
+            chan_dict = {
+                # For BB: Keep only non-CW channels (LFM or FMD) based on transmit_type
+                "BB": get_channels(first_ping_transmit_type, first_ping_transmit_type != "CW"),
+                # For CW: Keep only CW channels based on transmit_type
+                "CW": get_channels(first_ping_transmit_type, first_ping_transmit_type == "CW"),
+            }
+
+            return chan_dict
+
             return {
                 # For BB: Keep only non-CW channels (LFM or FMD) based on transmit_type
-                "BB": first_ping_transmit_type.where(
-                    first_ping_transmit_type != "CW", drop=True
-                ).channel,  # noqa
+                "BB": first_ping_transmit_type.where(first_ping_transmit_type != "CW", drop=True).channel,
                 # For CW: Keep only CW channels based on transmit_type
-                "CW": first_ping_transmit_type.where(
-                    first_ping_transmit_type == "CW", drop=True
-                ).channel,  # noqa
+                "CW": first_ping_transmit_type.where(first_ping_transmit_type == "CW", drop=True).channel,
             }
+
+            # return {
+            #     # For BB: Keep only non-CW channels (LFM or FMD) based on transmit_type
+            #     "BB": first_ping_transmit_type.where(
+            #         first_ping_transmit_type != "CW", drop=True
+            #     ).channel,  # noqa
+            #     # For CW: Keep only CW channels based on transmit_type
+            #     "CW": first_ping_transmit_type.where(
+            #         first_ping_transmit_type == "CW", drop=True
+            #     ).channel,  # noqa
+            # }
         else:
             # All channels are CW
             return {"BB": None, "CW": beam.channel}

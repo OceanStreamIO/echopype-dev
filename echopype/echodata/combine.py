@@ -383,6 +383,7 @@ def _create_channel_selection_dict(
 def _check_echodata_channels(
     echodata_list: List[EchoData],
     user_channel_selection: Optional[Union[List, Dict[str, list]]] = None,
+    file_names: List[str] = None,
 ) -> Dict[str, Optional[List[str]]]:
     """
     Coordinates the routines that check to make sure each ``EchoData`` group with a ``channel``
@@ -455,7 +456,7 @@ def _check_echodata_channels(
     return channel_selection
 
 
-def _check_ascending_ds_times(ds_list: List[xr.Dataset], ed_group: str) -> None:
+def _check_ascending_ds_times(ds_list: List[xr.Dataset], ed_group: str, file_names: List[str] = []) -> None:
     """
     A minimal check that the first time value of each Dataset is less than
     the first time value of the subsequent Dataset. If each first time value
@@ -486,25 +487,29 @@ def _check_ascending_ds_times(ds_list: List[xr.Dataset], ed_group: str) -> None:
     for time in ed_time_dim:
         # gather the first time of each Dataset
         first_times = []
-        for ds in ds_list:
+        for ds, file_name in zip(ds_list, file_names):
             times = ds[time].values
             if isinstance(times, np.ndarray):
-                # store first time if we have an array
-                first_times.append(times[0])
+                # Store first time if we have an array
+                first_times.append((times[0], file_name))
             else:
-                # store first time if we have a single value
-                first_times.append(times)
+                # Store first time if we have a single value
+                first_times.append((times, file_name))
 
-        first_times = np.array(first_times)
+        first_times_array = np.array([ft[0] for ft in first_times])
 
         # skip check if all first times are NaT
-        if not np.isnan(first_times).all():
-            is_descending = (np.diff(first_times) < np.timedelta64(0, "ns")).any()
+        if not np.isnan(first_times_array).all():
+            diffs = np.diff(first_times_array)
+            is_descending = (diffs < np.timedelta64(0, "ns")).any()
 
             if is_descending:
+                descending_indices = np.where(diffs < np.timedelta64(0, "ns"))[0] + 1
+                descending_files = [first_times[i][1] for i in descending_indices]
+
                 raise RuntimeError(
                     f"The coordinate {time} is not in ascending order for "
-                    f"group {ed_group}, combine cannot be used!"
+                    f"group {ed_group}, combine cannot be used! Files: {descending_files}"
                 )
 
 

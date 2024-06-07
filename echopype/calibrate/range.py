@@ -199,7 +199,7 @@ def compute_range_EK(
     return range_meter
 
 
-def range_mod_TVG_EK(
+def __range_mod_TVG_EK(
     echodata: EchoData, ed_beam_group: str, range_meter: xr.DataArray, sound_speed: xr.DataArray
 ) -> xr.DataArray:
     """
@@ -238,5 +238,68 @@ def range_mod_TVG_EK(
         if "GPT" in vend["transceiver_type"]:
             ch_GPT = vend["transceiver_type"] == "GPT"
             range_meter.loc[dict(channel=ch_GPT)] = range_meter.sel(channel=ch_GPT) - mod_Ex60()
+
+    return range_meter
+
+def range_mod_TVG_EK(
+    echodata: EchoData, ed_beam_group: str, range_meter: xr.DataArray, sound_speed: xr.DataArray
+) -> xr.DataArray:
+    """
+    Modify range for TVG calculation using Dask for better performance.
+
+    TVG correction factor changes depending when the echo recording starts
+    wrt when the transmit signal is sent out.
+    This depends on whether it is Ex60 or Ex80 style hardware
+    ref: https://github.com/CI-CMG/pyEcholab/blob/RHT-EK80-Svf/echolab2/instruments/EK80.py#L4297-L4308  # noqa
+    """
+
+    def mod_Ex60(beam_dask, sound_speed_dask):
+        # 2-sample shift in the beginning
+        return 2 * beam_dask * sound_speed_dask / 2  # [frequency x range_sample]
+
+    def mod_Ex80(beam_dask, sound_speed_dask):
+        mod = sound_speed_dask * beam_dask / 4
+        if isinstance(mod, xr.DataArray) and "time1" in mod.coords:
+            mod = mod.squeeze().drop("time1")
+        return mod
+
+    beam = echodata[ed_beam_group]
+    vend = echodata["Vendor_specific"]
+
+    # Convert range_meter and necessary beam variables to Dask arrays with specific chunk sizes
+    range_meter_dask = range_meter.chunk({"ping_time": 100, "range_sample": 100})
+    # sound_speed_dask = sound_speed.chunk({"ping_time": 200, "range_sample": 100})
+    sound_speed_dask = sound_speed.chunk()
+    beam_sample_interval_dask = beam["sample_interval"].chunk({"ping_time": 100, "channel": 1})
+    beam_transmit_duration_nominal_dask = beam["transmit_duration_nominal"].chunk({"ping_time": 100, "channel": 1})
+
+    # If EK60
+    if echodata.sonar_model in ["EK60", "ES70"]:
+        range_meter_dask = range_meter_dask - mod_Ex60(beam_sample_interval_dask, sound_speed_dask)
+
+    # If EK80:
+    # - compute range first assuming all channels have Ex80 style hardware
+    # - change range for channels with Ex60 style hardware (GPT)
+    elif echodata.sonar_model in ["EK80", "ES80", "EA640"]:
+        range_meter_dask = range_meter_dask - mod_Ex80(beam_transmit_duration_nominal_dask, sound_speed_dask)
+        print("Applied mod_Ex80")
+
+        # Change range for all channels with GPT
+        if "GPT" in vend["transceiver_type"]:
+            ch_GPT = vend["transceiver_type"] == "GPT"
+            gpt_mask = vend["transceiver_type"] == "GPT"
+            gpt_mask_computed = gpt_mask.compute()  # Compute the mask to avoid Dask boolean indexing issues
+            gpt_channels = vend["transceiver_type"].where(gpt_mask_computed, drop=True)
+
+            for ch in gpt_channels.values:
+                channel_mask = range_meter_dask['channel'] == ch
+                channel_mask_computed = channel_mask.compute()  # Compute the mask to avoid Dask boolean indexing issues
+                range_meter_dask = range_meter_dask.where(~channel_mask_computed,
+                                                          range_meter_dask - mod_Ex60(beam_sample_interval_dask,
+                                                                                      sound_speed_dask))
+                print(f"Applied GPT modification for channel {ch}")
+
+    # Compute the final result
+    range_meter = range_meter_dask.compute()
 
     return range_meter
