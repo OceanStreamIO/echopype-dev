@@ -631,20 +631,35 @@ class SetGroupsEK60(SetGroupsBase):
                 ),
             }
 
+            ping_data = self.parser_obj.ping_data_dict["power"].get(ch, None)
+            ping_time = self.parser_obj.ping_time.get(ch, None)
+
+            coords = {
+                "ping_time": (
+                    ["ping_time"],
+                    ping_time,
+                    self._varattrs["beam_coord_default"]["ping_time"],
+                ),
+            }
+
+            if ping_data is not None:
+                range_samples = np.arange(ping_data.shape[1])
+            else:
+                # Create an empty ping_data array if it is None
+                # Assuming a default length for the range_samples, e.g., 1000
+                default_length = 1000
+                ping_data = np.full((len(ping_time), default_length), np.nan)
+                range_samples = np.arange(default_length)
+
+            coords["range_sample"] = (
+                ["range_sample"],
+                range_samples,
+                self._varattrs["beam_coord_default"]["range_sample"],
+            )
+
             ds_tmp = xr.Dataset(
                 var_dict,
-                coords={
-                    "ping_time": (
-                        ["ping_time"],
-                        self.parser_obj.ping_time[ch],
-                        self._varattrs["beam_coord_default"]["ping_time"],
-                    ),
-                    "range_sample": (
-                        ["range_sample"],
-                        np.arange(self.parser_obj.ping_data_dict["power"][ch].shape[1]),
-                        self._varattrs["beam_coord_default"]["range_sample"],
-                    ),
-                },
+                coords=coords
             )
 
             # Save angle data if exist based on values in
