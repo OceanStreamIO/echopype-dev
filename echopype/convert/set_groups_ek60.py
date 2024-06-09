@@ -644,11 +644,12 @@ class SetGroupsEK60(SetGroupsBase):
 
             if ping_data is not None:
                 range_samples = np.arange(ping_data.shape[1])
+                power_data = ping_data
             else:
                 # Create an empty ping_data array if it is None
                 # Assuming a default length for the range_samples, e.g., 1000
                 default_length = 1000
-                ping_data = np.full((len(ping_time), default_length), np.nan)
+                power_data = np.full((len(ping_time), default_length), np.nan)
                 range_samples = np.arange(default_length)
 
             coords["range_sample"] = (
@@ -657,9 +658,12 @@ class SetGroupsEK60(SetGroupsBase):
                 self._varattrs["beam_coord_default"]["range_sample"],
             )
 
+            data_vars = {k: v for k, v in var_dict.items() if v[1] is not None}
+            data_vars["power"] = (["ping_time", "range_sample"], power_data)
+
             ds_tmp = xr.Dataset(
-                var_dict,
-                coords=coords
+                data_vars=data_vars,
+                coords=coords,
             )
 
             # Save angle data if exist based on values in
@@ -667,32 +671,34 @@ class SetGroupsEK60(SetGroupsBase):
             # Assume the mode of all pings are identical
             # 1 = Power only, 2 = Angle only 3 = Power & Angle
             if np.all(np.array(self.parser_obj.ping_data_dict["mode"][ch]) != 1):
-                ds_tmp = ds_tmp.assign(
-                    {
-                        "angle_athwartship": (
-                            ["ping_time", "range_sample"],
-                            self.parser_obj.ping_data_dict["angle"][ch][:, :, 0],
-                            {
-                                "long_name": "electrical athwartship angle",
-                                "comment": (
-                                    "Introduced in echopype for Simrad echosounders. "  # noqa
-                                    + "The athwartship angle corresponds to the major angle in SONAR-netCDF4 vers 2. "  # noqa
-                                ),
-                            },
-                        ),
-                        "angle_alongship": (
-                            ["ping_time", "range_sample"],
-                            self.parser_obj.ping_data_dict["angle"][ch][:, :, 1],
-                            {
-                                "long_name": "electrical alongship angle",
-                                "comment": (
-                                    "Introduced in echopype for Simrad echosounders. "  # noqa
-                                    + "The alongship angle corresponds to the minor angle in SONAR-netCDF4 vers 2. "  # noqa
-                                ),
-                            },
-                        ),
-                    }
-                )
+                angle_data = self.parser_obj.ping_data_dict.get("angle", {}).get(ch, None)
+                if angle_data is not None:
+                    ds_tmp = ds_tmp.assign(
+                        {
+                            "angle_athwartship": (
+                                ["ping_time", "range_sample"],
+                                self.parser_obj.ping_data_dict["angle"][ch][:, :, 0],
+                                {
+                                    "long_name": "electrical athwartship angle",
+                                    "comment": (
+                                        "Introduced in echopype for Simrad echosounders. "  # noqa
+                                        + "The athwartship angle corresponds to the major angle in SONAR-netCDF4 vers 2. "  # noqa
+                                    ),
+                                },
+                            ),
+                            "angle_alongship": (
+                                ["ping_time", "range_sample"],
+                                self.parser_obj.ping_data_dict["angle"][ch][:, :, 1],
+                                {
+                                    "long_name": "electrical alongship angle",
+                                    "comment": (
+                                        "Introduced in echopype for Simrad echosounders. "  # noqa
+                                        + "The alongship angle corresponds to the minor angle in SONAR-netCDF4 vers 2. "  # noqa
+                                    ),
+                                },
+                            ),
+                        }
+                    )
 
             # Attach frequency dimension/coordinate
             ds_tmp = ds_tmp.expand_dims({"channel": [self.sorted_channel[ch]]})
