@@ -13,6 +13,7 @@ from zarr.errors import GroupNotFoundError, PathNotFoundError
 
 if TYPE_CHECKING:
     from ..core import EngineHint, FileFormatHint, PathHint, SonarModelsHint
+from typing import MutableMapping
 
 from ..echodata.utils_platform import _clip_by_time_dim, get_mappings_expanded
 from ..utils.coding import sanitize_dtypes, set_time_encodings
@@ -163,12 +164,18 @@ class EchoData:
             storage_options=storage_options,
             open_kwargs=open_kwargs,
         )
-        echodata._check_path(converted_raw_path)
-        converted_raw_path = echodata._sanitize_path(converted_raw_path)
-        suffix = echodata._check_suffix(converted_raw_path)
+
+        if not isinstance(converted_raw_path, MutableMapping):
+            echodata._check_path(converted_raw_path)
+            converted_raw_path = echodata._sanitize_path(converted_raw_path)
+            suffix = echodata._check_suffix(converted_raw_path)
+            engine = XARRAY_ENGINE_MAP[suffix]
+        else:
+            engine = "zarr"
+
         tree = open_datatree(
             converted_raw_path,
-            engine=XARRAY_ENGINE_MAP[suffix],
+            engine=engine,
             **echodata.open_kwargs,
         )
         tree.name = "root"

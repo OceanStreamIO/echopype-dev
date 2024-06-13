@@ -342,9 +342,7 @@ class ParseEK(ParseBase):
         """Parse raw data file from Simrad EK60, EK80, and EA640 echosounders."""
         with RawSimradFile(self.source_file, "r", storage_options=self.storage_options) as fid:
             self.config_datagram = fid.read(1)
-            self.config_datagram["timestamp"] = np.datetime64(
-                self.config_datagram["timestamp"].replace(tzinfo=None), "[ns]"
-            )
+            self.config_datagram["timestamp"] = np.datetime64(self.config_datagram["timestamp"].replace(tzinfo=None), "[ns]")
             if "configuration" in self.config_datagram:
                 for v in self.config_datagram["configuration"].values():
                     if "pulse_duration" not in v and "pulse_length" in v:

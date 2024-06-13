@@ -282,7 +282,6 @@ def range_mod_TVG_EK(
     # - change range for channels with Ex60 style hardware (GPT)
     elif echodata.sonar_model in ["EK80", "ES80", "EA640"]:
         range_meter_dask = range_meter_dask - mod_Ex80(beam_transmit_duration_nominal_dask, sound_speed_dask)
-        print("Applied mod_Ex80")
 
         # Change range for all channels with GPT
         if "GPT" in vend["transceiver_type"]:
@@ -297,7 +296,6 @@ def range_mod_TVG_EK(
                 range_meter_dask = range_meter_dask.where(~channel_mask_computed,
                                                           range_meter_dask - mod_Ex60(beam_sample_interval_dask,
                                                                                       sound_speed_dask))
-                print(f"Applied GPT modification for channel {ch}")
 
     # Compute the final result
     range_meter = range_meter_dask.compute()

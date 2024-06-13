@@ -16,6 +16,7 @@ from ..utils import io
 from ..utils.coding import COMPRESSION_SETTINGS
 from ..utils.log import _init_logger
 from ..utils.prov import add_processing_level
+from typing import MutableMapping
 
 BEAM_SUBGROUP_DEFAULT = "Beam_group1"
 
@@ -61,6 +62,18 @@ def to_file(
         raise NotImplementedError("Parallel conversion is not yet implemented.")
     if engine not in XARRAY_ENGINE_MAP.values():
         raise ValueError("Unknown type to convert file to!")
+
+    if isinstance(save_path, MutableMapping):
+        _save_groups_to_file(
+            echodata,
+            output_path=save_path,
+            engine=engine,
+            compress=compress,
+            **kwargs,
+        )
+        echodata.converted_raw_path = save_path
+        return
+
 
     # Assemble output file names and path
     output_file = io.validate_output_path(
