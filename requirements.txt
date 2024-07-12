@@ -1,6 +1,7 @@
+bottleneck
 dask[array,distributed]
 netCDF4>1.6
-numpy
+numpy<2
 pynmea2
 pytz
 scipy

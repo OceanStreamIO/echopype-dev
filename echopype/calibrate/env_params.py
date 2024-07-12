@@ -77,7 +77,9 @@ def harmonize_env_param_time(
             return p
 
         # Interpolate `p` to `ping_time`
-        return p.dropna(dim="time1").interp(time1=ping_time)
+        return (
+            p.dropna(dim="time1").interp(time1=ping_time).ffill(dim="ping_time").drop_vars("time1")
+        )
     return p
 
 
