@@ -118,6 +118,7 @@ def _save_groups_to_file(echodata, output_path, engine, compress=True, **kwargs)
     # TODO: investigate chunking before we save Dataset to a file
 
     # Top-level group
+
     io.save_file(
         echodata["Top-level"],
         path=output_path,

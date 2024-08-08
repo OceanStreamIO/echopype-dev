@@ -8,6 +8,7 @@ import platform
 import sys
 import tempfile
 import uuid
+import numpy as np
 from pathlib import Path, WindowsPath
 from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
@@ -75,9 +76,36 @@ def save_file(ds, path, mode, engine, group=None, compression_settings=None, **k
         for var, enc in encoding.items():
             if isinstance(ds[var].data, DaskArray):
                 ds[var] = ds[var].chunk(enc.get("chunks", {}))
+
+        ds = handle_zero_dimension(ds)
+        encoding = update_encoding_for_chunks(encoding, ds)
+
         ds.to_zarr(store=path, mode=mode, group=group, encoding=encoding, **kwargs)
     else:
         raise ValueError(f"{engine} is not a supported save format")
+
+
+def handle_zero_dimension(ds):
+    # Check if the sound_velocity_profile_depth dimension is zero
+    if ds.dims.get('sound_velocity_profile_depth', 1) == 0:
+        # Ensure the dimension exists with at least one element
+        ds = ds.assign_coords(sound_velocity_profile_depth=[np.nan])
+    return ds
+
+
+def update_encoding_for_chunks(encoding, ds):
+    for var in ds.variables:
+        if 'sound_velocity_profile_depth' in ds[var].dims:
+            if var not in encoding:
+                encoding[var] = {}
+            if 'chunks' not in encoding[var]:
+                encoding[var]['chunks'] = {}
+            elif isinstance(encoding[var]['chunks'], tuple):
+                # Convert tuple to dictionary for mutability
+                encoding[var]['chunks'] = dict(enumerate(encoding[var]['chunks']))
+            # Ensure chunk length for 'sound_velocity_profile_depth' is at least 1
+            encoding[var]['chunks']['sound_velocity_profile_depth'] = 1
+    return encoding
 
 
 def get_file_format(file):

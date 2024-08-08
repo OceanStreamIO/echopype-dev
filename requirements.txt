@@ -1,6 +1,5 @@
 bottleneck
 dask[array,distributed]
-netCDF4>1.6
 numpy<2
 pynmea2
 pytz
