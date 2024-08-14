@@ -61,12 +61,22 @@ def filter_decimate_chirp(coeff_ch: Dict, y_ch: np.array, fs: float):
     # Get values
 
     # WBT filter and decimation
-    ytx_wbt = signal.convolve(y_ch, coeff_ch["wbt_fil"])
-    ytx_wbt_deci = ytx_wbt[0 :: coeff_ch["wbt_decifac"]]
+    try:
+        ytx_wbt = signal.convolve(y_ch, coeff_ch["wbt_fil"])
+    except ValueError:
+        ytx_wbt = signal.convolve(y_ch, coeff_ch["wbt_fil"].flatten())
+
+    wbt_decimation_factor = int(coeff_ch["wbt_decifac"])  # Convert to integer
+    ytx_wbt_deci = ytx_wbt[0:: wbt_decimation_factor]
 
     # PC filter and decimation
-    ytx_pc = signal.convolve(ytx_wbt_deci, coeff_ch["pc_fil"])
-    ytx_pc_deci = ytx_pc[0 :: coeff_ch["pc_decifac"]]
+    try:
+        ytx_pc = signal.convolve(ytx_wbt_deci, coeff_ch["pc_fil"])
+    except ValueError:
+        ytx_pc = signal.convolve(ytx_wbt_deci, coeff_ch["pc_fil"].flatten())
+
+    pc_decimation_factor = int(coeff_ch["pc_decifac"])
+    ytx_pc_deci = ytx_pc[0 :: pc_decimation_factor]
     ytx_pc_deci_time = (
         np.arange(ytx_pc_deci.size) * 1 / fs * coeff_ch["wbt_decifac"] * coeff_ch["pc_decifac"]
     )
