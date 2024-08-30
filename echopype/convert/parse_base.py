@@ -183,9 +183,8 @@ class ParseEK(ParseBase):
                     max_chunk_size=max_chunk_size,
                 )
 
-        if cleanup and zarr_root:
-            # Clean up the Zarr store using the existing function
-            delete_zarr_store(zarr_store.root)
+        if cleanup and zarr_store:
+            delete_zarr_store(zarr_store.root, zarr_store.fs)
 
     @staticmethod
     def _write_to_temp_zarr(
