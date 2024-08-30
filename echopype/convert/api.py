@@ -1,3 +1,5 @@
+import os
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Literal, Optional, Tuple, Union
 
@@ -492,6 +494,7 @@ def open_raw(
         parser.rectangularize_data(
             use_swap=use_swap,
             max_chunk_size=max_chunk_size,
+            cleanup=True
         )
 
     setgrouper = SONAR_MODELS[sonar_model]["set_groups"](

@@ -9,7 +9,7 @@ import numpy as np
 import zarr
 from dask.array.core import auto_chunks
 
-from ..utils.io import create_temp_zarr_store
+from ..utils.io import create_temp_zarr_store, delete_zarr_store
 from ..utils.log import _init_logger
 from .utils.ek_raw_io import RawSimradFile, SimradEOF
 from .utils.ek_swap import calc_final_shapes
@@ -145,6 +145,7 @@ class ParseEK(ParseBase):
         self,
         use_swap: "bool | Literal['auto']" = "auto",
         max_chunk_size: str = "100MB",
+        cleanup=False
     ) -> None:
         """
         Rectangularize the power, angle, and complex data.
@@ -160,6 +161,7 @@ class ParseEK(ParseBase):
 
         # Perform rectangularization
         zarr_root = None
+        zarr_store = None
         if use_swap:
             # Setup temp store
             zarr_store = create_temp_zarr_store()
@@ -180,6 +182,10 @@ class ParseEK(ParseBase):
                     zarr_root=zarr_root,
                     max_chunk_size=max_chunk_size,
                 )
+
+        if cleanup and zarr_root:
+            # Clean up the Zarr store using the existing function
+            delete_zarr_store(zarr_store.root)
 
     @staticmethod
     def _write_to_temp_zarr(
