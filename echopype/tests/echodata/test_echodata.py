@@ -458,7 +458,7 @@ def test_nan_range_entries(range_check_files):
         )
         range_output = cal_obj.range_meter
         # broadband complex data EK80 file: always need to drop "beam" dimension
-        nan_locs_backscatter_r = ~echodata["Sonar/Beam_group1"].backscatter_r.isel(beam=0).drop("beam").isnull()
+        nan_locs_backscatter_r = ~echodata["Sonar/Beam_group1"].backscatter_r.isel(beam=0).drop_vars("beam").isnull()
     else:
         # EK60 file does not need dropping "beam" dimension
         ds_Sv = echopype.calibrate.compute_Sv(echodata)
@@ -472,6 +472,7 @@ def test_nan_range_entries(range_check_files):
     assert xr.Dataset.equals(nan_locs_backscatter_r, nan_locs_Sv_range)
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     ["ext_type", "sonar_model", "variable_mappings", "path_model", "raw_path", "platform_data"],
     [
@@ -575,6 +576,7 @@ def test_update_platform(
     )
 
 
+@pytest.mark.integration
 def test_update_platform_multidim(test_path):
     raw_file = test_path["EK60"] / "ooi" / "CE02SHBP-MJ01C-07-ZPLSCB101_OOI-D20191201-T000000.raw"
     ed = echopype.open_raw(raw_file, sonar_model="EK60")
@@ -625,6 +627,7 @@ def test_update_platform_multidim(test_path):
     assert len(ed["Platform"]["water_level"].dims) == 0
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(
     ["variable_mappings"],
     [
@@ -692,6 +695,8 @@ def test_update_platform_no_update(test_path):
 
     ed.update_platform(extra_platform_data, variable_mappings=variable_mappings)
 
+
+@pytest.mark.integration
 def test_update_platform_latlon_notimestamp(test_path):
     raw_file = test_path["EK60"] / "ooi" / "CE02SHBP-MJ01C-07-ZPLSCB101_OOI-D20191201-T000000.raw"
     ed = echopype.open_raw(raw_file, sonar_model="EK60")

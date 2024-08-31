@@ -1,5 +1,6 @@
 import datetime
 import pathlib
+from numbers import Number
 from pathlib import Path
 from typing import Optional, Union
 
@@ -9,9 +10,16 @@ import xarray as xr
 from ..calibrate.ek80_complex import get_filter_coeff
 from ..echodata import EchoData
 from ..echodata.simrad import retrieve_correct_beam_group
+from ..utils.align import align_to_ping_time
 from ..utils.io import get_file_format, open_source
 from ..utils.log import _init_logger
 from ..utils.prov import add_processing_level
+from .ek_depth_utils import (
+    ek_use_beam_angles,
+    ek_use_platform_angles,
+    ek_use_platform_vertical_offsets,
+)
+from .loc_utils import check_loc_time_dim_duplicates, check_loc_vars_validity, sel_nmea
 from .split_beam_angle import get_angle_complex_samples, get_angle_power_samples
 
 logger = _init_logger(__name__)
@@ -55,84 +63,173 @@ def swap_dims_channel_frequency(ds: Union[xr.Dataset, str, pathlib.Path]) -> xr.
         )
 
 
+@add_processing_level("L2A")
 def add_depth(
     ds: Union[xr.Dataset, str, pathlib.Path],
-    depth_offset: float = 0,
-    tilt: float = 0,
+    echodata: Optional[Union[EchoData, str, pathlib.Path]] = None,
+    depth_offset: Optional[Union[Number, xr.DataArray]] = None,
+    tilt: Optional[Union[Number, xr.DataArray]] = None,
     downward: bool = True,
+    use_platform_vertical_offsets: bool = False,
+    use_platform_angles: bool = False,
+    use_beam_angles: bool = False,
 ) -> xr.Dataset:
     """
-    Create a depth data variable based on data in Sv dataset.
-
-    The depth is generated based on whether the transducers are mounted vertically
-    or with a polar angle to vertical, and whether the transducers were pointed
-    up or down.
+    Create a depth data variable based on data in Sv dataset, Echodata object, and/or
+    user input depth offset and tilt data.
 
     Parameters
     ----------
     ds : xr.Dataset or str or pathlib.Path
-        Source Sv dataset or path to a file containing the Source Sv dataset
-        to which a depth variable will be added.
-        Must contain `echo_range`.
-    depth_offset : float
+        Source Sv dataset to which a depth variable will be added.
+    echodata : Optional[EchoData, str, pathlib.Path], default `None`
+        `EchoData` object from which the `Sv` dataset originated.
+    depth_offset : Optional[Union[Number, xr.DataArray]], default None
         Offset along the vertical (depth) dimension to account for actual transducer
         position in water, since `echo_range` is counted from transducer surface.
-        Default is 0.
-    tilt : float
-        Transducer tilt angle [degree].
-        Default is 0 (transducer mounted vertically).
-    downward : bool
-        Whether or not the transducers point downward.
-        Default to True.
+        If provided as an xr.DataArray, it must have a single dimension corresponding to time.
+        The data array should represent the depth offset in meters at each time step.
+    tilt : Optional[Union[Number, xr.DataArray]], default None.
+        Transducer tilt angle [degree]. 0 corresponds to a transducer pointing vertically.
+        If provided as an xr.DataArray, it must have a single dimension corresponding to time.
+        The data array should represent the tilt angle in degrees at each time step.
+    downward : bool, default `True`
+        The transducers point downward.
+    use_platform_vertical_offsets: bool, default `False`
+        If True, use Echodata Platform group vertical offset values to compute transducer depth.
+        Currently only implemented for EK60/EK80 sonar models.
+        If `depth_offset` is specified, Platform vertical offset values will not be used.
+    use_platform_angles: bool, `False`
+        If True, use Echodata Platform group angle values to compute `echo_range` scaling values.
+        Currently only implemented for EK60/EK80 sonar models.
+        If `tilt` is specified, Platform group angle values will not be used.
+        In the current implementation cannot be used in tandem with `use_beam_angles`.
+    use_beam_angles: bool `False`
+        If True, use Echodata Beam group angle values to compute `echo_range` scaling values.
+        Currently only implemented for EK60/EK80 sonar models.
+        If `tilt` is specified, Beam group angle values will not be used.
+        In the current implementation cannot be used in tandem with `use_platform_angles`.
 
     Returns
     -------
-    The input dataset with a `depth` variable (in meters) added
-
-    Notes
-    -----
-    Currently this function only scalar inputs of depth_offset and tilt angle.
-    In future expansion we plan to add the following options:
-
-    * Allow inputs as xr.DataArray for time-varying variations of these variables
-    * Use data stored in the EchoData object or raw-converted file from which the Sv is derived,
-      specifically `water_level`, `vertical_offtset` and `tilt` in the `Platform` group.
+    The input dataset with a `depth` variable (in meters) added.
     """
-    # TODO: add options to use water_depth, vertical_offset, tilt stored in EchoData
-    # # Water level has to come from somewhere
-    # if depth_offset is None:
-    #     if "water_level" in ds:
-    #         depth_offset = ds["water_level"]
-    #     else:
-    #         raise ValueError(
-    #             "water_level not found in dataset and needs to be supplied by the user"
-    #         )
-
-    # # If not vertical needs to have tilt
-    # if not vertical:
-    #     if tilt is None:
-    #         if "tilt" in ds:
-    #             tilt = ds["tilt"]
-    #         else:
-    #             raise ValueError(
-    #                 "tilt not found in dataset and needs to be supplied by the user. "
-    #                 "Required when vertical=False"
-    #             )
-    # else:
-    #     tilt = 0
-
+    # Open Sv dataset
     ds = open_source(ds, "dataset", {})
-    # Multiplication factor depending on if transducers are pointing downward
-    mult = 1 if downward else -1
 
-    # Compute depth
-    ds["depth"] = mult * ds["echo_range"] * np.cos(tilt / 180 * np.pi) + depth_offset
-    ds["depth"].attrs = {"long_name": "Depth", "standard_name": "depth", "units": "m"}
+    # Raise `ValueError` if `echodata` is needed but not passed in
+    if (not echodata) and (use_platform_vertical_offsets or use_platform_angles or use_beam_angles):
+        raise ValueError(
+            "If any of `use_platform_vertical_offsets`, "
+            + "`use_platform_angles` "
+            + "or `use_beam_angles` is `True`, "
+            + "then `echodata` cannot be `None`."
+        )
+
+    # Raise `NotImplementedError` if `use_platform_angles` and `use_beam_angles` are
+    # both true.
+    if use_platform_angles and use_beam_angles:
+        raise NotImplementedError(
+            "Computing depth with both platform and beam angles is not implemented yet."
+        )
+
+    # Log warnings when group variables are not used
+    if depth_offset is not None and use_platform_vertical_offsets:
+        logger.warning(
+            "When `depth_offset` is specified, platform vertical offset "
+            "variables will not be used."
+        )
+    if tilt is not None and (use_beam_angles or use_platform_angles):
+        logger.warning(
+            "When `tilt` is specified, beam/platform angle variables will " "not be used."
+        )
+
+    if echodata:
+        # Open Echodata
+        echodata = open_source(echodata, "echodata", {})
+
+        # Grab sonar model
+        sonar_model = echodata["Sonar"].attrs["sonar_model"]
+
+        # Raise value error if sonar model is not supported for `use_platform/beam_...` arguments
+        if sonar_model not in ["EK60", "EK80"] and (
+            use_platform_vertical_offsets or use_platform_angles or use_beam_angles
+        ):
+            raise NotImplementedError(
+                f"`use_platform/beam_...` not implemented yet for `{sonar_model}`."
+            )
+
+    # Initialize transducer depth to 0.0 (no effect on depth)
+    transducer_depth = 0.0
+    if isinstance(depth_offset, Number):
+        # Set transducer depth to user specified depth offset
+        transducer_depth = depth_offset
+    if isinstance(depth_offset, xr.DataArray):
+        # Will not accept data variables that don't have a single dimension
+        if len(depth_offset.dims) != 1:
+            raise ValueError(
+                "If depth_offset is passed in as an xr.DataArray, "
+                "it must contain a single dimension."
+            )
+        else:
+            # Align `depth_offset` to `ping_time`
+            transducer_depth = align_to_ping_time(
+                depth_offset, depth_offset.dims[0], ds["ping_time"]
+            )
+    elif echodata and sonar_model in ["EK60", "EK80"]:
+        if use_platform_vertical_offsets:
+            # Compute transducer depth in EK systems using platform vertical offset data
+            transducer_depth = ek_use_platform_vertical_offsets(
+                echodata["Platform"], ds["ping_time"]
+            )
+
+    # Initialize echo range scaling to 1.0 (no effect on depth)
+    echo_range_scaling = 1.0
+    if isinstance(tilt, Number):
+        # Set echo range scaling (angular scaling) using user specified tilt
+        echo_range_scaling = np.cos(np.deg2rad(tilt))
+    if isinstance(tilt, xr.DataArray):
+        # Will not accept data variables that don't have a single dimension
+        if len(tilt.dims) != 1:
+            raise ValueError(
+                "If tilt is passed in as an xr.DataArray, it must contain a single dimension."
+            )
+        else:
+            # Align `tilt` to `ping_time`
+            echo_range_scaling = np.cos(
+                np.deg2rad(align_to_ping_time(tilt, tilt.dims[0], ds["ping_time"]))
+            )
+    elif echodata and sonar_model in ["EK60", "EK80"]:
+        if use_platform_angles:
+            # Compute echo range scaling in EK systems using platform angle data
+            echo_range_scaling = ek_use_platform_angles(echodata["Platform"], ds["ping_time"])
+        elif use_beam_angles:
+            # Identify beam group name by checking channel values of `ds`
+            if echodata["Sonar/Beam_group1"]["channel"].equals(ds["channel"]):
+                beam_group_name = "Beam_group1"
+            else:
+                beam_group_name = "Beam_group2"
+
+            # Compute echo range scaling in EK systems using beam angle data
+            echo_range_scaling = ek_use_beam_angles(echodata[f"Sonar/{beam_group_name}"])
+
+    # Set orientation multiplier. 1 if facing downwards, -1 if facing upwards
+    orientation_mult = 1 if downward else -1
+
+    # Compute `depth`
+    ds["depth"] = transducer_depth + (orientation_mult * ds["echo_range"] * echo_range_scaling)
 
     # Add history attribute
+    used_platform_vertical_offsets = use_platform_vertical_offsets and not depth_offset
+    used_platform_angles = use_platform_angles and not tilt
+    used_beam_angles = use_beam_angles and not tilt
     history_attr = (
-        f"{datetime.datetime.utcnow()} +00:00. "
-        "Added based on echo_range or other data in Sv dataset."  # noqa
+        f"{datetime.datetime.utcnow()} +00:00. depth` calculated using:"
+        f" Sv `echo_range`"
+        f"{', Echodata `Platform` Vertical Offsets' if (used_platform_vertical_offsets) else ''}"
+        f"{', Echodata `Platform` Angles' if (used_platform_angles) else ''}"
+        f"{', Echodata `%s` Angles' % (beam_group_name) if (used_beam_angles) else ''}"
+        "."
     )
     ds["depth"] = ds["depth"].assign_attrs({"history": history_attr})
 
@@ -142,7 +239,8 @@ def add_depth(
 @add_processing_level("L2A")
 def add_location(
     ds: Union[xr.Dataset, str, pathlib.Path],
-    echodata: Optional[Union[EchoData, str, pathlib.Path]],
+    echodata: Union[EchoData, str, pathlib.Path],
+    datagram_type: Optional[str] = None,
     nmea_sentence: Optional[str] = None,
 ):
     """
@@ -160,77 +258,70 @@ def add_location(
     echodata : EchoData or str or pathlib.Path
         An ``EchoData`` object or path to a file containing the ``EchoData``
         object holding the raw data
-    nmea_sentence
-        NMEA sentence to select a subset of location data (optional)
+    datagram_type : Optional[str], default None
+        Datagram type to use for latitude and longitude.
+        If `None` (default), latitude and longitude derived
+        from NMEA datagrams will be used.
+        Can be `"MRU1"` or `"IDX"`.
+        Can only be used for data for EK sonar models.
+    nmea_sentence : Optional[str], default None
+        NMEA sentence to select a subset of location data.
+        Only applied if latitude and longitude derived from
+        NMEA datagram are used (default).
 
     Returns
     -------
     The input dataset with the location data added
     """
-
-    def sel_interp(var, time_dim_name):
-        # NMEA sentence selection
-        if nmea_sentence:
-            position_var = echodata["Platform"][var][
-                echodata["Platform"]["sentence_type"] == nmea_sentence
-            ]
-        else:
-            position_var = echodata["Platform"][var]
-
-        if len(position_var) == 1:
-            # Propagate single, fixed-location coordinate
-            return xr.DataArray(
-                data=position_var.values[0] * np.ones(len(ds["ping_time"]), dtype=np.float64),
-                dims=["ping_time"],
-                attrs=position_var.attrs,
-            )
-        else:
-            # Values may be nan if there are ping_time values outside the time_dim_name range
-            return position_var.interp(**{time_dim_name: ds["ping_time"]})
-
+    # Open dataset and echodata object
     ds = open_source(ds, "dataset", {})
     echodata = open_source(echodata, "echodata", {})
 
-    if "longitude" not in echodata["Platform"] or echodata["Platform"]["longitude"].isnull().all():
-        raise ValueError("Coordinate variables not present or all nan")
+    # Grab lat lon names
+    if echodata.sonar_model.startswith("EK") and datagram_type in ["MRU1", "IDX"]:
+        lat_name = f"latitude_{datagram_type.lower()}"
+        lon_name = f"longitude_{datagram_type.lower()}"
+    elif not echodata.sonar_model.startswith("EK") and datagram_type:
+        raise ValueError("Sonar Model must be EK in order to specify datagram_type.")
+    else:
+        lat_name = "latitude"
+        lon_name = "longitude"
 
-    # Check if any latitude/longitude value is NaN/0
-    contains_nan_lat_lon = (
-        np.isnan(echodata["Platform"]["latitude"].values).any()
-        or np.isnan(echodata["Platform"]["longitude"].values).any()
-    )
-    contains_zero_lat_lon = (echodata["Platform"]["latitude"].values == 0).any() or (
-        echodata["Platform"]["longitude"].values == 0
-    ).any()
-    interp_msg = (
-        "Interpolation may be negatively impacted, "
-        "consider handling these values before calling ``add_location``."
-    )
-    if contains_nan_lat_lon:
-        logger.warning(f"Latitude and/or longitude arrays contain NaNs. {interp_msg}")
-    if contains_zero_lat_lon:
-        logger.warning(f"Latitude and/or longitude arrays contain zeros. {interp_msg}")
+    # Check if any latitude/longitude values are missing or are all NaN. Will raise Error.
+    check_loc_vars_validity(echodata, lat_name, lon_name, datagram_type, "missing")
+    check_loc_vars_validity(echodata, lat_name, lon_name, datagram_type, "all_nan")
 
-    interp_ds = ds.copy()
-    time_dim_name = list(echodata["Platform"]["longitude"].dims)[0]
+    # Check if any latitude/longitude value is NaN/0. Will log warning.
+    check_loc_vars_validity(echodata, lat_name, lon_name, datagram_type, "some_nan")
+    check_loc_vars_validity(echodata, lat_name, lon_name, datagram_type, "some_zero")
+
+    # Grab time dimension name
+    time_dim_name = list(echodata["Platform"][lon_name].dims)[0]
 
     # Check if there are duplicates in time_dim_name
-    if len(np.unique(echodata["Platform"][time_dim_name].data)) != len(
-        echodata["Platform"][time_dim_name].data
-    ):
-        raise ValueError(
-            f'The ``echodata["Platform"]["{time_dim_name}"]`` array contains duplicate values. '
-            "Downstream interpolation on the position variables requires unique time values."
-        )
+    check_loc_time_dim_duplicates(echodata, time_dim_name)
 
-    interp_ds["latitude"] = sel_interp("latitude", time_dim_name)
-    interp_ds["longitude"] = sel_interp("longitude", time_dim_name)
+    # Copy dataset
+    interp_ds = ds.copy()
+
+    # Select NMEA subset (if applicable) and interpolate location variables and place
+    # into `interp_ds`.
+    for loc_name, interp_loc_name in [(lat_name, "latitude"), (lon_name, "longitude")]:
+        loc_var = sel_nmea(
+            echodata=echodata,
+            loc_name=loc_name,
+            nmea_sentence=nmea_sentence,
+            datagram_type=datagram_type,
+        )
+        interp_ds[interp_loc_name] = align_to_ping_time(
+            loc_var, time_dim_name, ds["ping_time"], "linear"
+        )
 
     # Most attributes are attached automatically via interpolation
     # here we add the history
     history_attr = (
         f"{datetime.datetime.utcnow()} +00:00. "
-        "Interpolated or propagated from Platform latitude/longitude."  # noqa
+        f"Interpolated or propagated from Platform {lat_name}/{lon_name}."  # noqa
     )
     for da_name in POSITION_VARIABLES:
         interp_ds[da_name] = interp_ds[da_name].assign_attrs({"history": history_attr})

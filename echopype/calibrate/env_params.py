@@ -6,6 +6,7 @@ import xarray as xr
 
 from ..echodata import EchoData
 from ..utils import uwa
+from ..utils.align import align_to_ping_time
 from .cal_params import param2da
 
 ENV_PARAMS = (
@@ -66,20 +67,24 @@ def harmonize_env_param_time(
                 f"ping_time needs to be provided for comparison or interpolating {p.name}"
             )
 
-        # Direct assignment if all timestamps are identical (EK60 data)
-        if np.array_equal(p["time1"].data, ping_time.data):
-            if "ping_time" in p.coords:
-                # If ping_time already exists, update the values directly
-                p = p.assign_coords({"ping_time": p["time1"]}).drop_vars("time1")
-            else:
-                # Otherwise, rename time1 to ping_time
-                p = p.rename({"time1": "ping_time"})
-            return p
-
-        # Interpolate `p` to `ping_time`
-        return (
-            p.dropna(dim="time1").interp(time1=ping_time).ffill(dim="ping_time").drop_vars("time1")
+        return align_to_ping_time(
+            p.dropna(dim="time1", how="all"), "time1", ping_time, method="linear"
         )
+
+        # # Direct assignment if all timestamps are identical (EK60 data)
+        # if np.array_equal(p["time1"].data, ping_time.data):
+        #     if "ping_time" in p.coords:
+        #         # If ping_time already exists, update the values directly
+        #         p = p.assign_coords({"ping_time": p["time1"]}).drop_vars("time1")
+        #     else:
+        #         # Otherwise, rename time1 to ping_time
+        #         p = p.rename({"time1": "ping_time"})
+        #     return p
+        #
+        # # Interpolate `p` to `ping_time`
+        # return (
+        #     p.dropna(dim="time1").interp(time1=ping_time).ffill(dim="ping_time").drop_vars("time1")
+        # )
     return p
 
 

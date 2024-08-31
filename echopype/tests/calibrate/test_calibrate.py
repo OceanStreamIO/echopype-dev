@@ -310,52 +310,11 @@ def test_compute_Sv_combined_ed_ping_time_extend_past_time1():
         "pH",
     ]
 
-    # Grab time variables
-    time1 = ed_combined["Environment"]["time1"]
-    ping_time = ed_combined["Sonar/Beam_group1"]["ping_time"]
-
     # Iterate through vars
     for env_var_name in environment_related_variable_names:
         env_var = ds_Sv[env_var_name]
         # Check that no NaNs exist
         assert not np.any(np.isnan(env_var.data))
-
-        # Check that all values past the max of time1 are ffilled with value
-        # that is time-wise closest to max of time1
-        if "channel" not in env_var.dims:
-            assert np.allclose(
-                np.unique(
-                    env_var.sel(
-                        ping_time=slice(
-                            time1.max(),
-                            ping_time.max()
-                        )
-                    ).data
-                ),
-                env_var.sel(ping_time=slice(time1.max())).data[-1]
-            )
-        else:
-            # Iterate through environment variable channels to do the same
-            # check as above per channel
-            for channel_index in range(len(env_var["channel"])):
-                assert np.allclose(
-                    np.unique(
-                        env_var.isel(
-                            channel=channel_index
-                        )
-                        .sel(
-                            ping_time=slice(
-                                time1.max(),
-                                ping_time.max()
-                            )
-                        ).data
-                    ),
-                    env_var.isel(
-                        channel=channel_index
-                    ).sel(
-                        ping_time=slice(time1.max())
-                    ).data[-1]
-                )
 
                 
 @pytest.mark.parametrize(
@@ -457,3 +416,18 @@ def test_check_echodata_backscatter_size(
     
     # Turn off logger verbosity
     ep.utils.log.verbose(override=True)
+
+
+@pytest.mark.integration
+def test_fm_equals_bb():
+    """Check that waveform_mode='BB' and waveform_mode='FM' result in the same Sv/TS."""
+    # Open Raw and Compute both Sv and both TS
+    ed = ep.open_raw("echopype/test_data/ek80/D20170912-T234910.raw", sonar_model = "EK80")
+    ds_Sv_bb = ep.calibrate.compute_Sv(ed, waveform_mode="BB", encode_mode="complex")
+    ds_Sv_fm = ep.calibrate.compute_Sv(ed, waveform_mode="FM", encode_mode="complex")
+    ds_TS_bb = ep.calibrate.compute_TS(ed, waveform_mode="BB", encode_mode="complex")
+    ds_TS_fm = ep.calibrate.compute_TS(ed, waveform_mode="FM", encode_mode="complex")
+
+    # Check that they are equal
+    assert ds_Sv_bb.equals(ds_Sv_fm)
+    assert ds_TS_bb.equals(ds_TS_fm)
