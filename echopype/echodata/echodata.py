@@ -1,4 +1,5 @@
 import datetime
+import logging
 import warnings
 from html import escape
 from pathlib import Path
@@ -16,7 +17,6 @@ if TYPE_CHECKING:
 
 from ..echodata.utils_platform import _clip_by_time_dim, get_mappings_expanded
 from ..utils.coding import sanitize_dtypes, set_time_encodings
-from ..utils.log import _init_logger
 from ..utils.prov import add_processing_level
 from .convention import sonarnetcdf_1
 from .widgets.utils import tree_repr
@@ -35,7 +35,7 @@ TVG_CORRECTION_FACTOR = {
     "EA640": 0,
 }
 
-logger = _init_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class EchoData:

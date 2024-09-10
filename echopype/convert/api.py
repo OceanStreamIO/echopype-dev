@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Literal, Optional, Tuple, Union
 
@@ -14,14 +15,13 @@ if TYPE_CHECKING:
 from ..echodata.echodata import XARRAY_ENGINE_MAP, EchoData
 from ..utils import io
 from ..utils.coding import COMPRESSION_SETTINGS
-from ..utils.log import _init_logger
 from ..utils.prov import add_processing_level
 from typing import MutableMapping
 
 BEAM_SUBGROUP_DEFAULT = "Beam_group1"
 
 # Logging setup
-logger = _init_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def to_file(

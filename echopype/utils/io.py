@@ -1,7 +1,7 @@
 """
 echopype utilities for file handling
 """
-
+import logging
 import os
 import pathlib
 import platform
@@ -21,7 +21,7 @@ from zarr.storage import FSStore
 from ..echodata import EchoData
 from ..echodata.api import open_converted
 from ..utils.coding import set_storage_encodings
-from ..utils.log import _init_logger
+
 
 if TYPE_CHECKING:
     from ..core import PathHint
@@ -34,7 +34,7 @@ SUPPORTED_ENGINES = {
     },
 }
 
-logger = _init_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Get root echopype package name
 ECHOPYPE = __name__.split(".")[0]

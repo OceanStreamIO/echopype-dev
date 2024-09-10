@@ -1,4 +1,5 @@
 import functools
+import logging
 import re
 from datetime import datetime as dt
 from pathlib import Path
@@ -10,14 +11,12 @@ from _echopype_version import version as ECHOPYPE_VERSION
 from numpy.typing import NDArray
 from typing_extensions import Literal
 
-from .log import _init_logger
-
 ProcessType = Literal["conversion", "combination", "processing", "mask"]
 # Note that this PathHint is defined differently from the one in ..core
 PathHint = Union[str, Path]
 PathSequenceHint = Union[List[PathHint], Tuple[PathHint], NDArray[PathHint]]
 
-logger = _init_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def echopype_prov_attrs(process_type: ProcessType) -> Dict[str, str]:
