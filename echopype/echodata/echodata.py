@@ -13,6 +13,7 @@ from zarr.errors import GroupNotFoundError, PathNotFoundError
 
 if TYPE_CHECKING:
     from ..core import EngineHint, FileFormatHint, PathHint, SonarModelsHint
+from typing import MutableMapping
 
 from ..echodata.utils_platform import _clip_by_time_dim, get_mappings_expanded
 from ..utils.coding import sanitize_dtypes, set_time_encodings
