@@ -173,7 +173,7 @@ class SetGroupsEK80(SetGroupsBase):
                     (
                         self.parser_obj.environment["sound_velocity_profile"][::2]
                         if "sound_velocity_profile" in self.parser_obj.environment
-                        else [np.nan]
+                        else []
                     ),
                     {
                         "standard_name": "depth",
@@ -1419,17 +1419,26 @@ class SetGroupsEK80(SetGroupsBase):
                         # Pad arrays
                         data = np.asarray(
                             [
-                                np.pad(a, (0, max_len - len(a)), "constant", constant_values=np.nan)
+                                np.pad(
+                                    a,
+                                    (0, max_len - len(a)),
+                                    "constant",
+                                    constant_values=np.nan,
+                                )
                                 for a in data
                             ]
                         )
-                        dims = ["channel", f"{cd_type}_filter_n"]
+                        dims = ["filter_channel", f"{cd_type}_filter_n"]
                     else:
                         attrs = {
-                            "long_name": f"{attribute_values[cd_type]} {attribute_values[DECIMATION]}"  # noqa
+                            "long_name": f"{attribute_values[cd_type]} {attribute_values[DECIMATION]}"
                         }
-                        dims = ["channel"]
+                        dims = ["filter_channel"]
                     # Set the xarray data dictionary
                     coeffs_xr_data[f"{cd_type}_{key}"] = (dims, data, attrs)
 
-        return dataset.assign(coeffs_xr_data)
+        # Create a new dataset with the filter data
+        filter_ds = xr.Dataset(coeffs_xr_data)
+
+        # Merge the original dataset with the filter dataset
+        return xr.merge([dataset, filter_ds], combine_attrs="override")
