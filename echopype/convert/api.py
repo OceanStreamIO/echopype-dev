@@ -406,15 +406,15 @@ def _check_file(
 
 @add_processing_level("L1A", is_echodata=True)
 def open_raw(
-        raw_file: "PathHint",
-        sonar_model: "SonarModelsHint",
-        xml_path: Optional["PathHint"] = None,
-        include_bot: bool = False,
-        include_idx: bool = False,
-        convert_params: Optional[Dict[str, str]] = None,
-        storage_options: Optional[Dict[str, str]] = None,
-        use_swap: Union[bool, Literal["auto"]] = False,
-        max_chunk_size: str = "100MB",
+    raw_file: "PathHint",
+    sonar_model: "SonarModelsHint",
+    xml_path: Optional["PathHint"] = None,
+    include_bot: bool = False,
+    include_idx: bool = False,
+    convert_params: Optional[Dict[str, str]] = None,
+    storage_options: Optional[Dict[str, str]] = None,
+    use_swap: Union[bool, Literal["auto"]] = False,
+    max_chunk_size: str = "100MB",
 ) -> EchoData:
     """Create an EchoData object containing parsed data from a single raw data file.
 
