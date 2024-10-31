@@ -78,7 +78,6 @@ def filter_decimate_chirp(coeff_ch: Dict, y_ch: np.array, fs: float):
                 wbt_decimation_factor = int(unique_values[0])
             else:
                 # Handle case with multiple distinct values - choose the first or another strategy
-                print("Multiple decimation factors found, using the first:", unique_values[0])
                 wbt_decimation_factor = int(unique_values[0])
     else:
         # If it's not an array, convert it directly to integer

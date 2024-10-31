@@ -71,7 +71,6 @@ class SetGroupsEK80(SetGroupsBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # obtain sorted channel dict in ascending order for each usage scenario
         self.sorted_channel = {
             "all": self._sort_list(list(self.parser_obj.config_datagram["configuration"].keys())),
             "power": self._sort_list(self.parser_obj.ch_ids["power"]),
@@ -1127,6 +1126,9 @@ class SetGroupsEK80(SetGroupsBase):
         ]
 
         # Assemble dataset for ping-invariant params
+        ds_invariant_power = None
+        ds_invariant_complex = None
+
         if self.sorted_channel["complex"]:
             ds_invariant_complex = self._assemble_ds_ping_invariant(params, "complex")
         if self.sorted_channel["power"]:
@@ -1155,11 +1157,12 @@ class SetGroupsEK80(SetGroupsBase):
         #   and power data in /Sonar/Beam_group2
         #  if only one type of data exist: data in /Sonar/Beam_group1 group
         ds_beam_power = None
+        ds_beam = None
         if len(ds_complex) > 0:
             ds_beam = self.merge_save(ds_complex, ds_invariant_complex)
             if len(ds_power) > 0:
                 ds_beam_power = self.merge_save(ds_power, ds_invariant_power)
-        else:
+        elif ds_invariant_power is not None:
             ds_beam = self.merge_save(ds_power, ds_invariant_power)
 
         # Manipulate some Dataset dimensions to adhere to convention
@@ -1171,9 +1174,10 @@ class SetGroupsEK80(SetGroupsBase):
                 self.ping_time_only_names,
             )
 
-        self.beam_groups_to_convention(
-            ds_beam, self.beam_only_names, self.beam_ping_time_names, self.ping_time_only_names
-        )
+        if ds_beam is not None:
+            self.beam_groups_to_convention(
+                ds_beam, self.beam_only_names, self.beam_ping_time_names, self.ping_time_only_names
+            )
 
         return [ds_beam, ds_beam_power]
 

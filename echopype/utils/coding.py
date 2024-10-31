@@ -128,14 +128,20 @@ def set_time_encodings(ds: xr.Dataset) -> xr.Dataset:
     for var, encoding in DEFAULT_ENCODINGS.items():
         if var in new_ds:
             da = new_ds[var].copy()
+
             # Process all variable names matching the patterns *_time* or time<digits>
-            # Examples: ping_time, ping_time_2, time1, time2
             if bool(search(r"_time|^time[\d]+$", var)):
-                new_ds[var] = xr.apply_ufunc(
-                    _encode_time_dataarray,
-                    da,
-                    keep_attrs=True,
-                )
+                if np.isnan(da).all():
+                    continue
+
+                try:
+                    new_ds[var] = xr.apply_ufunc(
+                        _encode_time_dataarray,
+                        da,
+                        keep_attrs=True,
+                    )
+                except ValueError as e:
+                    raise e
 
             new_ds[var].encoding = encoding
 
