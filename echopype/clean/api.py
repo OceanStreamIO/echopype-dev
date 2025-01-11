@@ -118,10 +118,6 @@ def mask_transient_noise(
     # Check range variable
     if range_var not in ["echo_range", "depth"]:
         raise ValueError("`range_var` must be either `echo_range` or `depth`.")
-    if range_var not in ds_Sv.data_vars and not use_index_binning:
-        raise ValueError(
-            f"Masking transient noise requires `{range_var}` data variable in `ds_Sv`."
-        )
 
     # Copy `ds_Sv`
     ds_Sv = ds_Sv.copy()
@@ -309,10 +305,6 @@ def mask_attenuated_signal(
     # Check range variable
     if range_var not in ["echo_range", "depth"]:
         raise ValueError("`range_var` must be either `echo_range` or `depth`.")
-    if range_var not in ds_Sv.data_vars:
-        raise ValueError(
-            f"Masking attenuated signal requires `{range_var}` data variable in `ds_Sv`."
-        )
 
     # Check range values
     if upper_limit_sl > lower_limit_sl:
@@ -325,8 +317,8 @@ def mask_attenuated_signal(
     attenuation_signal_threshold = extract_dB(attenuation_signal_threshold)
 
     # Setup and validate upper and lower limit SL range values
-    lower_limit_sl = _parse_x_bin(lower_limit_sl, "range_bin")
-    upper_limit_sl = _parse_x_bin(upper_limit_sl, "range_bin")
+    # lower_limit_sl = _parse_x_bin(lower_limit_sl, "range_bin")
+    # upper_limit_sl = _parse_x_bin(upper_limit_sl, "range_bin")
 
     # Return empty masks if searching range is outside the echosounder range
     if (upper_limit_sl > ds_Sv[range_var].max()) or (lower_limit_sl < ds_Sv[range_var].min()):
@@ -358,7 +350,7 @@ def mask_attenuated_signal(
 
 
 def estimate_background_noise(
-    ds_Sv: xr.Dataset, ping_num: int, range_sample_num: int, background_noise_max: str = None
+    ds_Sv: xr.Dataset, ping_num: int, range_sample_num: int, background_noise_max: str = None, range_var: str = "depth"
 ) -> xr.DataArray:
     """
     Estimate background noise by computing mean calibrated power of a collection of pings.
@@ -392,21 +384,21 @@ def estimate_background_noise(
         background_noise_max = extract_dB(background_noise_max)
 
     # Compute transmission loss
-    spreading_loss = 20 * np.log10(ds_Sv["echo_range"].where(ds_Sv["echo_range"] >= 1, other=1))
-    absorption_loss = 2 * ds_Sv["sound_absorption"] * ds_Sv["echo_range"]
+    spreading_loss = 20 * np.log10(ds_Sv[range_var].where(ds_Sv[range_var] >= 1, other=1))
+    absorption_loss = 2 * ds_Sv["sound_absorption"] * ds_Sv[range_var]
 
     # Compute power binned averages
     power_cal = _log2lin(ds_Sv["Sv"] - spreading_loss - absorption_loss)
     power_cal_binned_avg = 10 * np.log10(
         power_cal.coarsen(
             ping_time=ping_num,
-            range_sample=range_sample_num,
+            depth=range_sample_num,
             boundary="pad",
         ).mean()
     )
 
     # Compute noise
-    noise = power_cal_binned_avg.min(dim="range_sample", skipna=True)
+    noise = power_cal_binned_avg.min(dim="depth", skipna=True)
 
     # Align noise `ping_time` to the first index of each coarsened `ping_time` bin
     noise = noise.assign_coords(ping_time=ping_num * np.arange(len(noise["ping_time"])))

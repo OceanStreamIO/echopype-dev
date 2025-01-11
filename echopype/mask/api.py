@@ -274,7 +274,6 @@ def _variable_prov_attrs(
     return attrs
 
 
-@add_processing_level("L3*")
 def apply_mask(
     source_ds: Union[xr.Dataset, str, pathlib.Path],
     mask: Union[xr.DataArray, str, pathlib.Path, List[Union[xr.DataArray, str, pathlib.Path]]],

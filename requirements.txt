@@ -6,7 +6,7 @@ pytz
 scipy
 xarray
 pandas
-zarr
+zarr=2.18.3
 fsspec
 s3fs
 requests

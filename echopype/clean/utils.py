@@ -122,16 +122,11 @@ def index_binning_pool_Sv(
     between depth values is uniform across all pings. Thus, computing the number of
     range sample indices needed to cover the depth bin is a channel-specific task.
     """
+
     # Drop `filenames` dimension if exists and transpose Dataset
     ds_Sv = ds_Sv.drop_dims("filenames", errors="ignore").transpose(
-        "channel", "ping_time", "range_sample"
+        "channel", "ping_time", "depth"
     )
-
-    # Compute number of range sample indices that are needed to encapsulate the `depth_bin`
-    # value per channel.
-    all_chan_num_range_sample_indices = np.ceil(
-        depth_bin / np.nanmean(np.diff(ds_Sv[range_var], axis=2), axis=(1, 2))
-    ).astype(int)
 
     # Create list for pooled Sv DataArrays
     pooled_Sv_list = []
@@ -139,24 +134,25 @@ def index_binning_pool_Sv(
     # Iterate through channels
     for channel_index in range(len(ds_Sv["channel"])):
         # Create calibrated Sv DataArray copies and remove values too close to the surface
-        min_range_sample = (ds_Sv[range_var] <= exclude_above).argmin().values
+        min_depth = (ds_Sv[range_var] <= exclude_above).argmin().values
+
         chan_Sv = ds_Sv["Sv"].isel(
             channel=channel_index,
-            range_sample=slice(min_range_sample, None),
+            depth=slice(min_depth, None),
         )
         chan_pooled_Sv = ds_Sv["Sv"].isel(
             channel=channel_index,
-            range_sample=slice(min_range_sample, None),
+            depth=slice(min_depth, None),
         )
 
-        # Grab channel-specific number of range sample indices for vertical binning
-        chan_num_range_sample_indices = all_chan_num_range_sample_indices[channel_index]
+        depth = ds_Sv['Sv'].isel(channel=channel_index).depth
+        chan_num_depth_indices = np.ceil(depth_bin / np.nanmean(np.diff(depth))).astype(int)
 
         # Create pooling size list
-        pooling_size = [(2 * num_side_pings) + 1, (2 * chan_num_range_sample_indices) + 1]
+        pooling_size = [(2 * num_side_pings) + 1, (2 * chan_num_depth_indices) + 1]
 
         # Rechunk Sv since `generic_filter` expects a Dask Array
-        chan_Sv = chan_Sv.chunk(chunk_dict)
+        # chan_Sv = chan_Sv.chunk(chunk_dict)
 
         # Compute `chan_pooled_Sv` values using dask-image's generic filter
         chan_pooled_Sv.values = _lin2log(
@@ -212,7 +208,7 @@ def downsample_upsample_along_depth(
         np.digitize(
             ds_Sv[range_var], [interval.left for interval in downsampled_Sv["depth_bins"].data]
         ),
-        dims=["channel", "ping_time", "range_sample"],
+        dims=["channel", "ping_time", range_var],
     )
 
     # Initialize upsampled Sv
@@ -361,16 +357,13 @@ def echopy_attenuated_signal_mask(
             # Compare ping and block medians, and mask ping if difference greater than
             # threshold.
             pingmedian = _lin2log(np.nanmedian(_log2lin(Sv[ping_time_idx, up:lw])))
-            blockmedian = _lin2log(
-                np.nanmedian(
-                    _log2lin(
+            blockmedian = _lin2log(np.nanmedian(_log2lin(
                         Sv[
                             (ping_time_idx - num_side_pings) : (ping_time_idx + num_side_pings),
                             up:lw,
                         ]
-                    )
-                )
-            )
+                    )))
+
             if (pingmedian - blockmedian) < attenuation_signal_threshold:
                 attenuated_mask[ping_time_idx, :] = True
 
