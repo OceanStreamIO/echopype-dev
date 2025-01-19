@@ -15,13 +15,13 @@ logger = logging.getLogger(__name__)
 
 
 def compute_raw_MVBS(
-    ds_Sv: xr.Dataset,
-    range_interval: Union[pd.IntervalIndex, np.ndarray],
-    ping_interval: Union[pd.IntervalIndex, np.ndarray],
-    range_var: Literal["echo_range", "depth"] = "echo_range",
-    method="map-reduce",
-    skipna=True,
-    **flox_kwargs,
+        ds_Sv: xr.Dataset,
+        range_interval: Union[pd.IntervalIndex, np.ndarray],
+        ping_interval: Union[pd.IntervalIndex, np.ndarray],
+        range_var: Literal["echo_range", "depth"] = "echo_range",
+        method="map-reduce",
+        skipna=True,
+        **flox_kwargs,
 ):
     """
     Compute the raw unformatted MVBS of ``ds_Sv``.
@@ -82,12 +82,12 @@ def compute_raw_MVBS(
 
 
 def compute_raw_NASC(
-    ds_Sv: xr.Dataset,
-    range_interval: Union[pd.IntervalIndex, np.ndarray],
-    dist_interval: Union[pd.IntervalIndex, np.ndarray],
-    method="map-reduce",
-    skipna=True,
-    **flox_kwargs,
+        ds_Sv: xr.Dataset,
+        range_interval: Union[pd.IntervalIndex, np.ndarray],
+        dist_interval: Union[pd.IntervalIndex, np.ndarray],
+        method="map-reduce",
+        skipna=True,
+        **flox_kwargs,
 ):
     """
     Compute the raw unformatted NASC of ``ds_Sv``.
@@ -188,26 +188,46 @@ def compute_raw_NASC(
     h_mean = h_mean_num / h_mean_denom
 
     # Combine to compute NASC and name it
-    raw_NASC = sv_mean * h_mean * 4 * np.pi * 1852**2
+    raw_NASC = sv_mean * h_mean * 4 * np.pi * 1852 ** 2
     raw_NASC.name = "sv"
 
     return xr.merge([ds, ds_ping_time, raw_NASC])
 
 
 def get_distance_from_latlon(ds_Sv):
-    # Get distance from lat/lon in nautical miles
-    df_pos = ds_Sv["latitude"].to_dataframe().join(ds_Sv["longitude"].to_dataframe())
+    """
+    Calculate cumulative distance from latitude and longitude in the Sv dataset.
+
+    Parameters:
+    ds_Sv (xarray.Dataset): Dataset containing 'latitude' and 'longitude' coordinates.
+
+    Returns:
+    numpy.ndarray: Cumulative distance in nautical miles.
+    """
+    # Convert to DataFrame and select only relevant columns
+    df_lat = ds_Sv[["latitude"]].to_dataframe().reset_index()[["ping_time", "latitude"]]
+    df_lon = ds_Sv[["longitude"]].to_dataframe().reset_index()[["ping_time", "longitude"]]
+
+    # Merge latitude and longitude DataFrames
+    df_pos = pd.merge(df_lat, df_lon, on="ping_time", how="inner")
+
+    # Shift latitude and longitude for the previous point
     df_pos["latitude_prev"] = df_pos["latitude"].shift(-1)
     df_pos["longitude_prev"] = df_pos["longitude"].shift(-1)
+
+    # Drop NaNs and calculate distance
     df_latlon_nonan = df_pos.dropna().copy()
+
     df_latlon_nonan["dist"] = df_latlon_nonan.apply(
         lambda x: distance.distance(
             (x["latitude"], x["longitude"]),
-            (x["latitude_prev"], x["longitude_prev"]),
+            (x["latitude_prev"], x["longitude_prev"])
         ).nm,
-        axis=1,
+        axis=1
     )
-    df_pos = df_pos.join(df_latlon_nonan["dist"], how="left")
+
+    # Merge distances back and compute cumulative distance
+    df_pos = pd.merge(df_pos, df_latlon_nonan[["ping_time", "dist"]], on="ping_time", how="left")
     df_pos["dist"] = df_pos["dist"].cumsum()
     df_pos["dist"] = df_pos["dist"].ffill().bfill()
 
@@ -264,7 +284,7 @@ def _set_MVBS_attrs(ds):
 
 
 def _convert_bins_to_interval_index(
-    bins: list, closed: Literal["left", "right"] = "left"
+        bins: list, closed: Literal["left", "right"] = "left"
 ) -> pd.IntervalIndex:
     """
     Convert bins to sorted pandas IntervalIndex
@@ -361,11 +381,11 @@ def _parse_x_bin(x_bin: str, x_label="range_bin") -> float:
 
 
 def _setup_and_validate(
-    ds_Sv: xr.Dataset,
-    range_var: Literal["echo_range", "depth"] = "echo_range",
-    range_bin: Optional[str] = None,
-    closed: Literal["left", "right"] = "left",
-    required_data_vars: Optional[list] = None,
+        ds_Sv: xr.Dataset,
+        range_var: Literal["echo_range", "depth"] = "echo_range",
+        range_bin: Optional[str] = None,
+        closed: Literal["left", "right"] = "left",
+        required_data_vars: Optional[list] = None,
 ) -> Tuple[xr.Dataset, float]:
     """
     Setup and validate shared arguments for
@@ -434,10 +454,10 @@ def _setup_and_validate(
 
 
 def _get_reduced_positions(
-    ds_Sv: xr.Dataset,
-    ds_X: xr.Dataset,
-    X: Literal["MVBS", "NASC"],
-    x_interval: Union[pd.IntervalIndex, np.ndarray],
+        ds_Sv: xr.Dataset,
+        ds_X: xr.Dataset,
+        X: Literal["MVBS", "NASC"],
+        x_interval: Union[pd.IntervalIndex, np.ndarray],
 ) -> xr.Dataset:
     """Helper function to get reduced positions
 
@@ -485,15 +505,15 @@ def _get_reduced_positions(
 
 
 def _groupby_x_along_channels(
-    ds_Sv: xr.Dataset,
-    range_interval: Union[pd.IntervalIndex, np.ndarray],
-    x_interval: Union[pd.IntervalIndex, np.ndarray],
-    x_var: Literal["ping_time", "distance_nmi"] = "ping_time",
-    range_var: Literal["echo_range", "depth"] = "echo_range",
-    method: str = "map-reduce",
-    func: str = "nanmean",
-    skipna: bool = True,
-    **flox_kwargs,
+        ds_Sv: xr.Dataset,
+        range_interval: Union[pd.IntervalIndex, np.ndarray],
+        x_interval: Union[pd.IntervalIndex, np.ndarray],
+        x_var: Literal["ping_time", "distance_nmi"] = "ping_time",
+        range_var: Literal["echo_range", "depth"] = "echo_range",
+        method: str = "map-reduce",
+        func: str = "nanmean",
+        skipna: bool = True,
+        **flox_kwargs,
 ) -> xr.Dataset:
     """
     Perform groupby of ``ds_Sv`` along each channel for the given
