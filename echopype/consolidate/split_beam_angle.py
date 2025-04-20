@@ -8,7 +8,11 @@ from typing import List, Tuple
 import numpy as np
 import xarray as xr
 
+from ..utils.log import _init_logger
 from ..calibrate.ek80_complex import compress_pulse, get_norm_fac, get_transmit_signal
+
+
+logger = _init_logger(__name__)
 
 # Beam type identifiers
 BEAM_TYPE_SPLIT_4_SECTOR = 1      # 4-sector split-beam (common Simrad type)
@@ -105,7 +109,6 @@ def _compute_angle_from_complex(
         raise NotImplementedError
 
     else:
-        print("beam_type: ", beam_type)
         raise ValueError("beam_type not recognized!")
 
     theta = theta / sens[0] - offset[0]
@@ -235,7 +238,7 @@ def get_angle_complex_samples(
             beam_type_ch = ds_beam["beam_type"].sel(channel=ch_id).item()
 
             if beam_type_ch not in SUPPORTED_BEAM_TYPES:
-                print(f"Skipping channel {ch_id}: unsupported beam_type {beam_type_ch}")
+                logger.warning(f"Skipping channel {ch_id}: unsupported beam_type {beam_type_ch}")
                 continue
 
             theta_ch, phi_ch = _compute_angle_from_complex(
