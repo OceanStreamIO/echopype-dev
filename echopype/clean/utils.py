@@ -210,9 +210,7 @@ def downsample_upsample_along_depth(
     # Assign a depth bin index to each Sv depth value
     bin_dim = f"{range_var}_bins"
     depth_bin_assignment = xr.DataArray(
-        np.digitize(
-            ds_Sv[range_var], [interval.left for interval in downsampled_Sv[bin_dim].data]
-        ),
+        np.digitize(ds_Sv[range_var], [interval.left for interval in downsampled_Sv[bin_dim].data]),
         dims=["channel", "ping_time", "range_sample"],
     )
 
