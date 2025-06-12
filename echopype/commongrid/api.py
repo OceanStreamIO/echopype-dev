@@ -26,7 +26,6 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-@add_processing_level("L3*")
 def compute_MVBS(
     ds_Sv: xr.Dataset,
     range_var: Literal["echo_range", "depth"] = "echo_range",
@@ -183,7 +182,7 @@ def compute_MVBS(
     ds_MVBS = ds_MVBS.assign_attrs(prov_dict)
     ds_MVBS["frequency_nominal"] = ds_Sv["frequency_nominal"]  # re-attach frequency_nominal
 
-    ds_MVBS = insert_input_processing_level(ds_MVBS, input_ds=ds_Sv)
+    # ds_MVBS = insert_input_processing_level(ds_MVBS, input_ds=ds_Sv)
 
     return ds_MVBS
 
