@@ -10,7 +10,7 @@ import xarray as xr
 from ..commongrid.utils import _parse_x_bin
 from ..utils.compute import _lin2log, _log2lin
 from ..utils.log import _init_logger
-from ..utils.prov import add_processing_level, echopype_prov_attrs, insert_input_processing_level
+from ..utils.prov import echopype_prov_attrs
 from .utils import (
     add_remove_background_noise_attrs,
     downsample_upsample_along_depth,
@@ -350,7 +350,7 @@ def mask_attenuated_signal(
 
 
 def estimate_background_noise(
-    ds_Sv: xr.Dataset, ping_num: int, range_sample_num: int, background_noise_max: str = None, range_var: str = "depth"
+    ds_Sv: xr.Dataset, ping_num: int, range_sample_num: int, background_noise_max: str = None
 ) -> xr.DataArray:
     """
     Estimate background noise by computing mean calibrated power of a collection of pings.
@@ -384,8 +384,8 @@ def estimate_background_noise(
         background_noise_max = extract_dB(background_noise_max)
 
     # Compute transmission loss
-    spreading_loss = 20 * np.log10(ds_Sv[range_var].where(ds_Sv[range_var] >= 1, other=1))
-    absorption_loss = 2 * ds_Sv["sound_absorption"] * ds_Sv[range_var]
+    spreading_loss = 20 * np.log10(ds_Sv["echo_range"].where(ds_Sv["echo_range"] >= 1, other=1))
+    absorption_loss = 2 * ds_Sv["sound_absorption"] * ds_Sv["echo_range"]
 
     # Compute power binned averages
     power_cal = _log2lin(ds_Sv["Sv"] - spreading_loss - absorption_loss)
@@ -423,7 +423,6 @@ def estimate_background_noise(
     return Sv_noise
 
 
-@add_processing_level("L*B")
 def remove_background_noise(
     ds_Sv: xr.Dataset,
     ping_num: int,
@@ -481,21 +480,14 @@ def remove_background_noise(
     ds_Sv["Sv_noise"] = add_remove_background_noise_attrs(
         ds_Sv["Sv_noise"], "noise", ping_num, range_sample_num, SNR_threshold, background_noise_max
     )
-    ds_Sv["Sv_corrected"] = corrected_Sv
-    ds_Sv["Sv_corrected"] = add_remove_background_noise_attrs(
-        ds_Sv["Sv_corrected"],
-        "corrected",
-        ping_num,
-        range_sample_num,
-        SNR_threshold,
-        background_noise_max,
-    )
+    ds_Sv["Sv"] = corrected_Sv
+
     prov_dict = echopype_prov_attrs(process_type="processing")
     prov_dict["processing_function"] = "clean.remove_background_noise"
     ds_Sv = ds_Sv.assign_attrs(prov_dict)
 
     # The output `ds_Sv` is built as a copy of the input `ds_Sv`, so the step below is
     # not needed, strictly speaking. But doing makes the decorator function more generic
-    ds_Sv = insert_input_processing_level(ds_Sv, input_ds=ds_Sv)
+    # ds_Sv = insert_input_processing_level(ds_Sv, input_ds=ds_Sv)
 
     return ds_Sv
